@@ -1,10 +1,10 @@
-const Ride = require("../model/Ride");
+const Ride = require("../models/Ride");
 const {
 	calculateDistance,
 	calculateFare,
 	generateOTP,
 } = require("../utils/mapUtils");
-const { BadRequestError } = require("../errors");
+const BadRequestError = require("../errors/bad-request");
 const { StatusCodes } = require("http-status-codes");
 
 const createRide = async (req, res) => {
