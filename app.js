@@ -2,11 +2,28 @@ require("dotenv").config();
 
 const express = require("express")
 const http = require("http");
+const socketIo = require("socket.io")
+
 const connectDB=require("./config/connect");
+
+const handleSocketConnection = require("./controllers/sockets");
 
 const app = express();
 app.use(express.json());
 const server = http.createServer(app)
+
+const io = socketIo(server, {
+    cors: {
+        origin: "*"
+    }
+})
+
+app.use((req, res, next) => {
+    req.io = io;
+    return next();
+})
+
+handleSocketConnection(io);
 
 const main = async () => {
     try{
