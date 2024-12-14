@@ -109,7 +109,8 @@ const acceptRide = async (req, res) => {
 
 		ride = await ride.populate("captain");
 
-		// socket logic
+		req.socket.to(`ride_${rideId}`).emit("rideUpdate", ride);
+		req.socket.to(`ride_${rideId}`).emit("rideAccepted")
 
 		res.status(StatusCodes.OK).json({
 			message: "Ride accepted successfully",
@@ -120,6 +121,40 @@ const acceptRide = async (req, res) => {
 		throw new BadRequestError("Failed to accept ride");
 	}
 };
+
+const updateRideStatus = async (req, res) => {
+	const { rideId } = req.params;
+	const { status } = req.body;
+
+	if(!rideId || !status){
+		throw new BadRequestError("Ride ID and status are required");
+	}
+
+	try{
+		let ride = await Ride.findById(rideId).populate("customer captain")
+
+		if(!ride){
+			throw new NotFoundError("Ride not found");
+		}
+
+		if(!["START", "ARRIVED", "COMPLETED"].includes(status)){
+			throw new BadRequestError("Invalid ride status")
+		}
+
+		ride.status = status;
+		await ride.save();
+
+		req.socket.to(`ride_${rideId}`).emit("rideUpdate", ride)
+
+		res.status(StatusCodes.OK).json({
+			message: `Ride status updated to ${status}`,
+			ride
+		})
+	}catch(error){
+		console.error("Error updating ride status:", error);
+		throw new BadRequestError("Failed to update ride status")
+	}
+}
 
 const getMyRides = async (req, res) => {
 	const userId = req.user.id;
@@ -163,5 +198,6 @@ const getMyRides = async (req, res) => {
 module.exports = {
     createRide,
     acceptRide,
-    getMyRides
+    getMyRides,
+	updateRideStatus
 }
