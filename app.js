@@ -1,10 +1,19 @@
 require("dotenv").config();
+require("express-async-errors")
+
+const EventEmitter = require("events");
+EventEmitter.defaultMaxListeners = 100;
 
 const express = require("express")
 const http = require("http");
 const socketIo = require("socket.io")
-
 const connectDB=require("./config/connect");
+const notFoundMiddleware = require("./middleware/not-found")
+const errorHandlerMiddleware = require("./middleware/error-handler");
+const authMiddleware = require("./middleware/authentication");
+
+const authRouter = require("./routes/auth")
+const rideRouter = require("./routes/ride")
 
 const handleSocketConnection = require("./controllers/sockets");
 
@@ -24,6 +33,12 @@ app.use((req, res, next) => {
 })
 
 handleSocketConnection(io);
+
+app.use("/auth", authRouter);
+app.use("/ride", authMiddleware, rideRouter);
+
+app.use(notFoundMiddleware)
+app.use(errorHandlerMiddleware)
 
 const main = async () => {
     try{
