@@ -1,9 +1,10 @@
-const geolib = require("geolib");
 const User = require("../models/User");
 const Ride = require("../models/Ride");
 const jwt = require("jsonwebtoken");
+const geolib = require("geolib");
 
 const handleSocketConnection = (io) => {
+	console.log("Inside Socket connection")
 	const onDutyCaptains = {};
 
 	io.use(async (socket, next) => {
@@ -50,7 +51,7 @@ const handleSocketConnection = (io) => {
 				socket.join("onDuty");
 				console.log(`Captain ${user.id} is now on duty`);
 
-				// updateNearbyCaptains();
+				updateNearbyCaptains();
 			});
 
 			socket.on("goOffDuty", () => {
@@ -58,7 +59,7 @@ const handleSocketConnection = (io) => {
 				socket.leave("onDuty");
 				console.log(`Captain ${user.id} is now off duty.`);
 
-				// updateNearbyCaptains();
+				updateNearbyCaptains();
 			});
 
 			// update captain's location:
@@ -66,7 +67,7 @@ const handleSocketConnection = (io) => {
 				if (onDutyCaptains[user.id]) {
 					onDutyCaptains[user.id].coords = coords;
 					console.log(`Captain ${user.id} updated location.`);
-					// updateNearbyCaptains();
+					updateNearbyCaptains();
 
 					socket
 						.to(`captain_${user.id}`)
@@ -180,21 +181,29 @@ const handleSocketConnection = (io) => {
 						socket.emit("rideCanceled", {
 							message: "Your ride has been canceled",
 						});
-                        
-                        if(ride.captain){
-                            const captainSocket = getCaptainSocket(ride.captain._id);
-                            if(captainSocket){
-                                captainSocket.emit("rideCanceled", {
-                                    message: `The ride with customer ${user.id} has been canceled.`
-                                })
-                            }else{
-                                console.log(`Captain not found for ride ${rideId}`)
-                            }
-                        }else{
-                            console.log(`No captain associated with ride ${rideId}`)
-                        }
 
-                        console.log(`Customer ${user.id} cancelled the ride ${rideId}`);
+						if (ride.captain) {
+							const captainSocket = getCaptainSocket(
+								ride.captain._id
+							);
+							if (captainSocket) {
+								captainSocket.emit("rideCanceled", {
+									message: `The ride with customer ${user.id} has been canceled.`,
+								});
+							} else {
+								console.log(
+									`Captain not found for ride ${rideId}`
+								);
+							}
+						} else {
+							console.log(
+								`No captain associated with ride ${rideId}`
+							);
+						}
+
+						console.log(
+							`Customer ${user.id} cancelled the ride ${rideId}`
+						);
 					});
 				} catch (error) {
 					console.error("Error searching for captain,", error);
@@ -205,15 +214,72 @@ const handleSocketConnection = (io) => {
 			});
 		}
 
+		socket.on("subscribeToCaptain", (captainId) => {
+			const captain = onDutyCaptains[captainId];
+			console.log(onDutyCaptains, captain);
+
+			if (captain) {
+				socket.join(`captain_${captainId}`);
+				socket.emit("captainLocationUpdate", {
+					captainId,
+					coords: captain.cords,
+				});
+				console.log(
+					`User ${user.id} subscribed to captain ${captainId}'s location`
+				);
+			}
+		});
+
+		socket.on("subscribeRide", async (rideId) => {
+			socket.join(`ride_${rideId}`);
+			try {
+				const rideData = await Ride.findById(rideId).populate(
+					"customer captain"
+				);
+				socket.emit("rideData", rideData);
+			} catch (error) {
+				socket.error("Failed to receive data");
+			}
+		});
+
+		socket.on("disconnect", () => {
+			if (user.role === "captain") {
+				delete onDutyCaptains[user.id];
+			} else if (user.role === "customer") {
+				console.log(`Customer ${user.id} disconnected`);
+			}
+		});
+
+		function updateNearbyCaptains() {
+			io.sockets.sockets.forEach((socket) => {
+				if (socket.user?.role === "customer") {
+					const customerCoords = socket.user?.coords;
+					if (customerCoords) {
+						const nearbyCaptains = Object.values(onDutyCaptains)
+							.filter((captain) =>
+								geolib.isPointWithinRadius(
+									captain.coords,
+									customerCoords,
+									60000
+								)
+							)
+							.map((captain) => ({
+								id: captain.socketId,
+								coords: captain.coords,
+							}));
+						console.log("nearbyCaptains", nearbyCaptains);
+						socket.emit("nearbyCaptains", nearbyCaptains);
+					}
+				}
+			});
+		}
+
 		function getCaptainSocket(captainId) {
-			const captain = Object.values(
-				onDutyCaptains.find(
-					(captain) =>
-						captain.userId.toString() === captainId.toString()
-				)
+			const captain = Object.values(onDutyCaptains).find(
+				(captain) => captain.userId.toString() === captainId.toString()
 			);
 
-            return captain ? io.sockets.sockets.get(captain.socketId) : null
+			return captain ? io.sockets.sockets.get(captain.socketId) : null;
 		}
 	});
 };
