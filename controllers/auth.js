@@ -1,9 +1,8 @@
 const jwt = require("jsonwebtoken");
 const { StatusCodes } = require("http-status-codes");
 const User = require("../models/User");
-const BadRequestError  = require("../errors/bad-request")
+const { UnauthenticatedError, BadRequestError } = require("../errors")
 
-const UnauthenticatedError = require("../errors/unauthenticated")
 const auth = async (req, res) => {
 	const { phone, role } = req.body;
 
